@@ -23,6 +23,9 @@ const CALCULATION_FAILED_ERROR_MESSAGE = "Please check the input values are reas
 const CALCULATION_LIMIT_YEARS = 1000;
 const CALCULATION_TOO_LONG_ERROR_MESSAGE = `This annuity will last longer than ${CALCULATION_LIMIT_YEARS} years. Please increase the monthly withdrawal`;
 
+const MIN_DRAWDOWN_PERCENTAGE = 2.5;
+const MAX_DRAWDOWN_PERCENTAGE = 17.5;
+
 /** @param {Event} event */
 function toggleRelatedInputs(event) {
     const element = /** @type {HTMLSelectElement} */ (event.target);
@@ -74,6 +77,16 @@ function roundUp(num, decimals = 0) {
  */
 function currencyFormat(num, space = '&nbsp') {
     return `R${space}` + num.toFixed(2).replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1,')
+}
+
+/**
+ * @param {number} monthlyIncome 
+ * @param {number} startBalance 
+ * @returns {number}
+ */
+function getCappedMonthlyIncome(monthlyIncome, startBalance) {
+    const dd = startBalance / 12 / 100;
+    return Math.max(Math.min(monthlyIncome, MAX_DRAWDOWN_PERCENTAGE * dd), MIN_DRAWDOWN_PERCENTAGE * dd);
 }
 
 /** 
@@ -147,13 +160,22 @@ function calculateResultFast(
     const ratePayB = getInterestPayRate(interestRate, compound);
 
     let balance = principal;
-    let monthlyIncome = initialMonthlyIncome;
+    let monthlyIncome = getCappedMonthlyIncome(initialMonthlyIncome, principal);
     let finalWithdrawal = 0;
 
     let i = 0;
     while (balance >= 0.01) {
         if (i > 0 && i % 12 === 0) {
-            monthlyIncome *= 1 + annualIncrease / 100;
+            const nextMonthlyIncome = monthlyIncome * (1 + annualIncrease / 100);
+            const capped = getCappedMonthlyIncome(nextMonthlyIncome, balance);
+            if (capped !== nextMonthlyIncome) {
+                return {
+                    actualAnnuityTerm: i / 12,
+                    finalMonthlyIncome: monthlyIncome,
+                    finalWithdrawal
+                }
+            }
+            monthlyIncome = nextMonthlyIncome;
         }
         if (i > 2 * annuityTerm * 12) {
             return {
@@ -198,12 +220,21 @@ function calculateResult(
 
     const results = [];
     let balance = principal;
-    let monthlyIncome = initialMonthlyIncome;
+    let monthlyIncome = getCappedMonthlyIncome(initialMonthlyIncome, principal);;
 
     let i = 0;
     while (balance >= 0.01) {
         if (i > 0 && i % 12 === 0) {
-            monthlyIncome *= 1 + annualIncrease / 100;
+            const nextMonthlyIncome = monthlyIncome * (1 + annualIncrease / 100);
+            const capped = getCappedMonthlyIncome(nextMonthlyIncome, balance);
+            if (capped !== nextMonthlyIncome) {
+                return {
+                    actualAnnuityTerm: i / 12,
+                    finalMonthlyIncome: monthlyIncome,
+                    results
+                }
+            }
+            monthlyIncome = nextMonthlyIncome;
         }
         if (annuityTerm && i > 2 * annuityTerm * 12) {
             input.error([], CALCULATION_FAILED_ERROR_MESSAGE, true);
@@ -390,7 +421,6 @@ function calculateAnnuityTerm(
         input.error([], CRITICAL_ERROR_MESSAGE, true);
         throw new Error("Invalid state");
     }
-    console.warn("annuityTerm: ", annuityTerm);
     const { results, actualAnnuityTerm } = calculateResult(
         principal,
         annuityTerm,
@@ -409,128 +439,6 @@ function calculateAnnuityTerm(
         calculationResults: results,
         outputResults: {
             main: `Annuity Term: ${actualAnnuityTerm.toFixed(1)} years`,
-            smallA: `Initial Annual Income: ${currencyFormat(initialAnnualIncome)} <br /> Draw Down Percentage: ${drawDown.toFixed(1)}%`,
-            smallB: `Total Withdrawn: ${currencyFormat(totalWithdrawn)}`,
-            smallC: `Total Interest: ${currencyFormat(totalInterest)}`,
-        }
-    }
-}
-
-/** @type {CalcFunc} */
-function calculateStartingPrincipal(
-    _principal,
-    annuityTerm,
-    interestRate,
-    compound,
-    monthlyIncome,
-    annualIncrease,
-) {
-    if (
-        annuityTerm === null ||
-        interestRate === null ||
-        monthlyIncome === null ||
-        annualIncrease === null
-    ) {
-        input.error([], CRITICAL_ERROR_MESSAGE, true);
-        throw new Error("Invalid state");
-    }
-
-    const principal = findMoneyParameter((p) => {
-        const { actualAnnuityTerm, finalWithdrawal, finalMonthlyIncome } = calculateResultFast(
-            p,
-            annuityTerm,
-            interestRate,
-            compound,
-            monthlyIncome,
-            annualIncrease,
-        );
-        if (actualAnnuityTerm === annuityTerm) {
-            return finalMonthlyIncome / finalWithdrawal;
-        } else {
-            return annuityTerm / actualAnnuityTerm;
-        }
-    }, 'increasing', monthlyIncome, monthlyIncome);
-
-    const { results } = calculateResult(
-        principal,
-        annuityTerm,
-        interestRate,
-        compound,
-        monthlyIncome,
-        annualIncrease,
-    );
-
-    const totalWithdrawn = results.map(it => it.withdrawal).reduce((a, b) => a + b);
-    const totalInterest = results.map(it => it.interestPayment).reduce((a, b) => a + b);
-    const initialAnnualIncome = monthlyIncome * Math.min(12, results.length);
-    const drawDown = initialAnnualIncome / Math.max(principal, initialAnnualIncome) * 100;
-
-    return {
-        calculationResults: results,
-        outputResults: {
-            main: `Principal: ${currencyFormat(principal)}`,
-            smallA: `Initial Annual Income: ${currencyFormat(initialAnnualIncome)} <br /> Draw Down Percentage: ${drawDown.toFixed(1)}%`,
-            smallB: `Total Withdrawn: ${currencyFormat(totalWithdrawn)}`,
-            smallC: `Total Interest: ${currencyFormat(totalInterest)}`,
-        }
-    }
-}
-
-/** @type {CalcFunc} */
-function calculateInterestRate(
-    principal,
-    annuityTerm,
-    _interestRate,
-    compound,
-    monthlyIncome,
-    annualIncrease,
-) {
-    if (
-        principal == null ||
-        annuityTerm === null ||
-        monthlyIncome === null ||
-        annualIncrease === null
-    ) {
-        input.error([], CRITICAL_ERROR_MESSAGE, true);
-        throw new Error("Invalid state");
-    }
-
-    const rate = findParameter((r) => {
-        const { actualAnnuityTerm, finalWithdrawal, finalMonthlyIncome } = calculateResultFast(
-            principal,
-            annuityTerm,
-            r,
-            compound,
-            monthlyIncome,
-            annualIncrease,
-        );
-        if (actualAnnuityTerm === annuityTerm) {
-            return finalMonthlyIncome / finalWithdrawal;
-        } else {
-            return annuityTerm / actualAnnuityTerm;
-        }
-    }, 'increasing', 1, 0);
-
-    const interestRate = roundDown(rate, 3);
-
-    const { results } = calculateResult(
-        principal,
-        annuityTerm,
-        interestRate,
-        compound,
-        monthlyIncome,
-        annualIncrease,
-    );
-
-    const totalWithdrawn = results.map(it => it.withdrawal).reduce((a, b) => a + b);
-    const totalInterest = results.map(it => it.interestPayment).reduce((a, b) => a + b);
-    const initialAnnualIncome = monthlyIncome * Math.min(12, results.length);
-    const drawDown = initialAnnualIncome / Math.max(principal, initialAnnualIncome) * 100;
-
-    return {
-        calculationResults: results,
-        outputResults: {
-            main: `Interest Rate: ${interestRate}% `,
             smallA: `Initial Annual Income: ${currencyFormat(initialAnnualIncome)} <br /> Draw Down Percentage: ${drawDown.toFixed(1)}%`,
             smallB: `Total Withdrawn: ${currencyFormat(totalWithdrawn)}`,
             smallC: `Total Interest: ${currencyFormat(totalInterest)}`,
@@ -1057,13 +965,17 @@ const input = {
 /** @param {ResultList} annualResults */
 const displayAnnualResultsTable = (annualResults) => {
     let annualResultsHtml = '';
+    const principal = annualResults[0].startBalance;
     annualResults.forEach((r, index) => {
+        // const drawdown = r.withdrawal / principal * 100;
+        const drawdown = r.withdrawal / r.startBalance * 100;
         annualResultsHtml += `<tr>
             <td class="text-center">${index + 1}</td>
             <td>${currencyFormat(r.startBalance)}</td>
             <td>${currencyFormat(r.interestPayment)}</td>
             <td>${currencyFormat(r.withdrawal)}</td>
             <td>${currencyFormat(r.endBalance)}</td>
+            <td>${drawdown.toFixed(1)}%</td>
         </tr>`;
     });
 
@@ -1129,8 +1041,6 @@ const calculateInputs = () => {
     const compound = getCompoundFromIndex(compoundIdx);
 
     if (!input.valid()) throw new Error("Invalid State");
-
-    console.warn("Calculate called: ", principal, annuityTerm, interestRate, compound, monthlyIncome, annualIncrease);
 
     const {
         outputResults: {
