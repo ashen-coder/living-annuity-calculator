@@ -14,7 +14,6 @@ console.log('Script is OK! ༼ つ ◕_◕ ༽つ');
  * @param {?number} interestRate
  * @param {number} compound
  * @param {?number} annualDrawdown
- * @param {?number} annualIncrease
  * @returns {{ calculationResults: ResultList, outputResults: Record<string, string>}}
  */
 
@@ -26,7 +25,7 @@ const END_BALANCE = 125_000;
 const CRITICAL_ERROR_MESSAGE = "Please refresh the page and try again.";
 const CALCULATION_FAILED_ERROR_MESSAGE = "Please check the input values are reasonable";
 const CALCULATION_LIMIT_YEARS = 1000;
-const CALCULATION_TOO_LONG_ERROR_MESSAGE = `This annuity will last longer than ${CALCULATION_LIMIT_YEARS} years. Please increase the monthly withdrawal`;
+const CALCULATION_TOO_LONG_ERROR_MESSAGE = `This living annuity will last longer than ${CALCULATION_LIMIT_YEARS} years. Please increase the annual drawdown`;
 const INVALID_DRAWDOWN_ERROR_MESSAGE = `The annual drawdown must be between ${MIN_DRAWDOWN_PERCENTAGE}% and ${MAX_DRAWDOWN_PERCENTAGE}%`;
 
 
@@ -91,6 +90,15 @@ function currencyFormat(num, space = '&nbsp') {
 function getCappedMonthlyIncome(monthlyIncome, startBalance) {
     const dd = startBalance / 12 / 100;
     return Math.max(Math.min(monthlyIncome, MAX_DRAWDOWN_PERCENTAGE * dd), MIN_DRAWDOWN_PERCENTAGE * dd);
+}
+
+/**
+ * @param {number} annualDrawdown 
+ * @param {number} annualStartBalance 
+ * @returns {number}
+ */
+function getMonthlyIncome(annualDrawdown, annualStartBalance) {
+    return annualStartBalance * annualDrawdown / 100 / 12;
 }
 
 /** 
@@ -187,32 +195,25 @@ function calculateResultFast(
  * @param {?number} annuityTerm
  * @param {number} interestRate
  * @param {number} compound
- * @param {number} initialMonthlyIncome
- * @param {number} annualIncrease
+ * @param {number} annualDrawdown
  */
 function calculateResult(
     principal,
     annuityTerm,
     interestRate,
     compound,
-    initialMonthlyIncome,
-    annualIncrease,
+    annualDrawdown
 ) {
     const ratePayB = getInterestPayRate(interestRate, compound);
 
     const results = [];
     let balance = principal;
-    let monthlyIncome = getCappedMonthlyIncome(initialMonthlyIncome, principal);;
+    let monthlyIncome = getMonthlyIncome(annualDrawdown, principal);
 
     let i = 0;
-    while (balance > END_BALANCE / 4) {
-        if (i % 12 === 0) {
-            if (balance < END_BALANCE) {
-                break;
-            } else if (i > 0) {
-                const nextMonthlyIncome = monthlyIncome * (1 + annualIncrease / 100);
-                monthlyIncome = getCappedMonthlyIncome(nextMonthlyIncome, balance);
-            }
+    while (!(i % 12 === 0 && balance < END_BALANCE)) {
+        if (i > 0 && i % 12 === 0) {
+            monthlyIncome = getMonthlyIncome(annualDrawdown, balance);
         }
         if (annuityTerm && i > 2 * annuityTerm * 12) {
             input.error([], CALCULATION_FAILED_ERROR_MESSAGE, true);
@@ -313,14 +314,12 @@ function calculateMonthlyIncome(
     annuityTerm,
     interestRate,
     compound,
-    _annualDrawdown,
-    annualIncrease,
+    _annualDrawdown
 ) {
     if (
         principal === null ||
         annuityTerm === null ||
-        interestRate === null ||
-        annualIncrease === null
+        interestRate === null
     ) {
         input.error([], CRITICAL_ERROR_MESSAGE, true);
         throw new Error("Invalid state");
@@ -374,16 +373,24 @@ function calculateAnnuityTerm(
     interestRate,
     compound,
     annualDrawdown,
-    annualIncrease,
 ) {
     if (
         principal === null ||
         interestRate === null ||
-        annualDrawdown === null ||
-        annualIncrease === null
+        annualDrawdown === null
     ) {
         input.error([], CRITICAL_ERROR_MESSAGE, true);
         throw new Error("Invalid state");
+    }
+
+    if (interestRate >= annualDrawdown) {
+        input.error(['annual-drawdown-1', 'interest-rate-1'], 'The annual drawdown must be greater than the interest rate', true);
+        throw new Error("Invalid State");
+    }
+
+    if (principal <= END_BALANCE) {
+        input.error(['starting-principal-1'], `The starting principal must be greater than ${currencyFormat(END_BALANCE)}`, true);
+        throw new Error("Invalid State");
     }
 
     if (annualDrawdown < MIN_DRAWDOWN_PERCENTAGE || annualDrawdown > MAX_DRAWDOWN_PERCENTAGE) {
@@ -391,15 +398,12 @@ function calculateAnnuityTerm(
         throw new Error("Invalid State");
     }
 
-    const monthlyIncome = annualDrawdown * principal / 12 / 100;
-
     const { results, actualAnnuityTerm } = calculateResult(
         principal,
         annuityTerm,
         interestRate,
         compound,
-        monthlyIncome,
-        annualIncrease,
+        annualDrawdown
     );
 
     const totalWithdrawn = results.map(it => it.withdrawal).reduce((a, b) => a + b);
@@ -409,7 +413,7 @@ function calculateAnnuityTerm(
         calculationResults: results,
         outputResults: {
             main: `Annuity Term: ${actualAnnuityTerm.toFixed(1)} years`,
-            smallA: `Initial Monthly Income: ${currencyFormat(monthlyIncome)}`,
+            smallA: `Initial Monthly Income: ${currencyFormat(getMonthlyIncome(annualDrawdown, principal))}`,
             smallB: `Total Withdrawn: ${currencyFormat(totalWithdrawn)}`,
             smallC: `Total Interest: ${currencyFormat(totalInterest)}`,
         }
@@ -683,14 +687,12 @@ const calcInputs = /** @type {Record<number, ElementList>} */ ({
         $annuityTerm: document.getElementById('annuity-term-0'),
         $interestRate: document.getElementById('interest-rate-0'),
         $compound: document.getElementById('compound-0'),
-        $annualIncrease: document.getElementById('annual-increase-0'),
     },
     1: {
         $startingPrincipal: document.getElementById('starting-principal-1'),
         $interestRate: document.getElementById('interest-rate-1'),
         $compound: document.getElementById('compound-1'),
         $annualDrawdown: document.getElementById('annual-drawdown-1'),
-        $annualIncrease: document.getElementById('annual-increase-1'),
     },
 });
 
@@ -982,8 +984,7 @@ const calculateInputs = () => {
         $annuityTerm,
         $interestRate,
         $compound,
-        $annualDrawdown,
-        $annualIncrease
+        $annualDrawdown
     } = calcInputs[calcTypeIndex];
 
     input.reset();
@@ -992,7 +993,6 @@ const calculateInputs = () => {
     const interestRate = input.get($interestRate?.id).val();
     const compoundIdx = input.get($compound?.id).index().val();
     const annualDrawdown = input.get($annualDrawdown?.id).val();
-    const annualIncrease = input.get($annualIncrease?.id).val();
 
     if (!input.valid()) throw new Error("Invalid State");
 
@@ -1011,8 +1011,7 @@ const calculateInputs = () => {
         annuityTerm,
         interestRate,
         compound,
-        annualDrawdown,
-        annualIncrease
+        annualDrawdown
     );
 
     const {
