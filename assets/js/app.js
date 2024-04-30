@@ -12,7 +12,6 @@ console.log('Script is OK! ༼ つ ◕_◕ ༽つ');
  * @param {?number} principal
  * @param {?number} annuityTerm
  * @param {?number} interestRate
- * @param {number} compound
  * @param {?number} annualDrawdown
  * @returns {{ calculationResults: ResultList, outputResults: Record<string, string>}}
  */
@@ -22,12 +21,15 @@ const MIN_DRAWDOWN_PERCENTAGE = 2.5;
 const MAX_DRAWDOWN_PERCENTAGE = 17.5;
 const MIN_BALANCE = 125_000;
 const MAX_ANNUITY_TERM = 50;
+const COMPOUND_FREQUENCY = 12;
+const MIN_RETIREMENT_AGE = 55;
 
 const CRITICAL_ERROR_MESSAGE = "Please refresh the page and try again.";
 const CALCULATION_FAILED_ERROR_MESSAGE = "Please check the input values are reasonable";
 const CALCULATION_LIMIT_YEARS = 1000;
 const CALCULATION_TOO_LONG_ERROR_MESSAGE = `This living annuity will last longer than ${CALCULATION_LIMIT_YEARS} years. Please increase the annual drawdown`;
 const INVALID_DRAWDOWN_ERROR_MESSAGE = `The annual drawdown must be between ${MIN_DRAWDOWN_PERCENTAGE}% and ${MAX_DRAWDOWN_PERCENTAGE}%`;
+const INVALID_AGE_ERROR_MESSAGE = `The minimum retirement age is ${MIN_RETIREMENT_AGE} for a living annuity`;
 
 
 /** @param {Event} event */
@@ -104,20 +106,20 @@ function getMonthlyIncome(annualDrawdown, annualStartBalance) {
 
 /** 
  * @param {number} interestRate
- * @param {number} compound
  * @returns {number}
  */
-function getInterestPayRate(interestRate, compound) {
-    const cc = compound / 12;
-    const interest = interestRate / 100 / compound;
+function getInterestPayRate(interestRate) {
+    const cc = COMPOUND_FREQUENCY / 12;
+    const interest = interestRate / 100 / COMPOUND_FREQUENCY;
     return Math.pow(1 + interest, cc) - 1;
 }
 
 /**
  * @param {ResultList} monthlyResults 
+ * @param {number} age 
  * @returns {ResultList}
  */
-function getAnnualResults(monthlyResults) {
+function getAnnualResults(monthlyResults, age) {
     let annualResults = [];
 
     let totalInterest = 0;
@@ -126,6 +128,7 @@ function getAnnualResults(monthlyResults) {
     let annualInterest = 0;
     let annualWithdrawals = 0;
     let annualStartBalance = undefined;
+    let currentAge = age;
 
     monthlyResults.forEach((item, index) => {
         totalInterest += item.interestPayment;
@@ -137,13 +140,15 @@ function getAnnualResults(monthlyResults) {
         }
 
         if ((index + 1) % 12 === 0 || (index + 1) === monthlyResults.length) {
+            currentAge += 1;
             annualResults.push({
                 startBalance: annualStartBalance,
                 endBalance: item.endBalance,
                 interestPayment: annualInterest,
                 withdrawal: annualWithdrawals,
                 totalInterest,
-                totalWithdrawn
+                totalWithdrawn,
+                currentAge
             });
             annualInterest = 0;
             annualWithdrawals = 0;
@@ -170,7 +175,7 @@ function calculateResultFast(
     initialMonthlyIncome,
     annualIncrease,
 ) {
-    const ratePayB = getInterestPayRate(interestRate, compound);
+    const ratePayB = getInterestPayRate(interestRate);
 
     let balance = principal;
     let monthlyIncome = getCappedMonthlyIncome(initialMonthlyIncome, principal);
@@ -194,16 +199,14 @@ function calculateResultFast(
 /**
  * @param {number} principal
  * @param {number} interestRate
- * @param {number} compound
  * @param {number} annualDrawdown
  */
 function calculateResult(
     principal,
     interestRate,
-    compound,
     annualDrawdown
 ) {
-    const ratePayB = getInterestPayRate(interestRate, compound);
+    const ratePayB = getInterestPayRate(interestRate);
 
     const results = [];
     let balance = principal;
@@ -301,7 +304,6 @@ function calculateMonthlyIncome(
     principal,
     annuityTerm,
     interestRate,
-    compound,
     _annualDrawdown
 ) {
     if (
@@ -313,7 +315,7 @@ function calculateMonthlyIncome(
         throw new Error("Invalid state");
     }
 
-    // const ratePayB = getInterestPayRate(interestRate, compound);
+    // const ratePayB = getInterestPayRate(interestRate, COMPOUND_FREQUENCY);
     // const firstInterestPayment = principal * ratePayB;
 
     // const income = findMoneyParameter((i) => {
@@ -359,8 +361,7 @@ function calculateAnnuityTerm(
     principal,
     annuityTerm,
     interestRate,
-    compound,
-    annualDrawdown,
+    annualDrawdown
 ) {
     if (
         principal === null ||
@@ -384,7 +385,6 @@ function calculateAnnuityTerm(
     const { results } = calculateResult(
         principal,
         interestRate,
-        compound,
         annualDrawdown
     );
 
@@ -395,34 +395,11 @@ function calculateAnnuityTerm(
     return {
         calculationResults: results,
         outputResults: {
-            main: `Annuity Term: ${actualAnnuityTerm.toFixed(1)} years`,
+            main: `Annuity Term: ${actualAnnuityTerm.toFixed(0)}${actualAnnuityTerm >= MAX_ANNUITY_TERM ? '+' : ''} years`,
             smallA: `Initial Monthly Income: ${currencyFormat(getMonthlyIncome(annualDrawdown, principal))}`,
             smallB: `Total Withdrawn: ${currencyFormat(totalWithdrawn)}`,
             smallC: `Total Interest: ${currencyFormat(totalInterest)}`,
         }
-    }
-}
-
-/** @param {?number} compoundIndex */
-function getCompoundFromIndex(compoundIndex) {
-    switch (compoundIndex) {
-        case 0:
-            return 12;
-        case 1:
-            return 2;
-        case 2:
-            return 4;
-        case 3:
-            return 24;
-        case 4:
-            return 26;
-        case 5:
-            return 52;
-        case 6:
-            return 365;
-        default:
-            input.error([], CRITICAL_ERROR_MESSAGE, true);
-            throw new Error(`Invalid compound index: ${compoundIndex}`);
     }
 }
 
@@ -507,7 +484,7 @@ const tooltip = {
 
             let year = +(Number(tooltipModel.title) * 12).toFixed(0);
             let months = +(year % 12).toFixed(0);
-            let yearText = `Year ${(year - months) / 12}`;
+            let yearText = `Age ${(year - months) / 12}`;
             let monthText = months === 0 ? '' : `, Month ${months}`;
             innerHtml += '<tr><th class="loan-chart__title">' + yearText + monthText + '</th></tr>';
 
@@ -668,14 +645,13 @@ const calcInputs = /** @type {Record<number, ElementList>} */ ({
     0: {
         $startingPrincipal: document.getElementById('starting-principal-0'),
         $annuityTerm: document.getElementById('annuity-term-0'),
-        $interestRate: document.getElementById('interest-rate-0'),
-        $compound: document.getElementById('compound-0'),
+        $interestRate: document.getElementById('interest-rate-0')
     },
     1: {
         $startingPrincipal: document.getElementById('starting-principal-1'),
         $interestRate: document.getElementById('interest-rate-1'),
-        $compound: document.getElementById('compound-1'),
         $annualDrawdown: document.getElementById('annual-drawdown-1'),
+        $age: document.getElementById('age-1'),
     },
 });
 
@@ -906,15 +882,13 @@ const input = {
 /** @param {ResultList} annualResults */
 const displayAnnualResultsTable = (annualResults) => {
     let annualResultsHtml = '';
-    annualResults.forEach((r, index) => {
-        const drawdown = r.withdrawal / r.startBalance * 100;
+    annualResults.forEach((r) => {
         annualResultsHtml += `<tr>
-            <td class="text-center">${index + 1}</td>
+            <td class="text-center">${r.currentAge}</td>
             <td>${currencyFormat(r.startBalance)}</td>
             <td>${currencyFormat(r.interestPayment)}</td>
             <td>${currencyFormat(r.withdrawal)}</td>
             <td>${currencyFormat(r.endBalance)}</td>
-            <td>${drawdown.toFixed(1)}%</td>
         </tr>`;
     });
 
@@ -948,7 +922,7 @@ const displayMonthlyResultsTable = (monthlyResults) => {
  * @param {Chart} primaryChart
  */
 const displayPrimaryResultsChart = (annualResults, primaryChart) => {
-    primaryChart.data.labels = annualResults.map((_, idx) => idx + 1);
+    primaryChart.data.labels = annualResults.map(it => it.currentAge.toString());
     primaryChart.data.datasets[0].data = annualResults.map(it => it.endBalance);
     primaryChart.data.datasets[1].data = annualResults.map(it => it.totalInterest);
     primaryChart.data.datasets[2].data = annualResults.map(it => it.totalWithdrawn);
@@ -964,20 +938,28 @@ const calculateInputs = () => {
         $startingPrincipal,
         $annuityTerm,
         $interestRate,
-        $compound,
-        $annualDrawdown
+        $annualDrawdown,
+        $age
     } = calcInputs[calcTypeIndex];
 
     input.reset();
     const principal = input.get($startingPrincipal?.id).val();
     const annuityTerm = input.get($annuityTerm?.id).val();
     const interestRate = input.get($interestRate?.id).val();
-    const compoundIdx = input.get($compound?.id).index().val();
     const annualDrawdown = input.get($annualDrawdown?.id).val();
+    const age = input.get($age?.id).val();
 
     if (!input.valid()) throw new Error("Invalid State");
 
-    const compound = getCompoundFromIndex(compoundIdx);
+    if (age === null) {
+        input.error([], CRITICAL_ERROR_MESSAGE, true);
+        throw new Error("Invalid state");
+    }
+
+    if (age < MIN_RETIREMENT_AGE) {
+        input.error('age-1', INVALID_AGE_ERROR_MESSAGE, true);
+        throw new Error("Invalid State");
+    }
 
     const {
         outputResults: {
@@ -991,7 +973,6 @@ const calculateInputs = () => {
         principal,
         annuityTerm,
         interestRate,
-        compound,
         annualDrawdown
     );
 
@@ -1007,15 +988,15 @@ const calculateInputs = () => {
     $smallB && ($smallB.innerHTML = smallB);
     $smallC && ($smallC.innerHTML = smallC)
 
-    return calculationResults;
+    return { calculationResults, age };
 }
 
 /**
  * @param {Chart} primaryChart
  */
 const runApp = (primaryChart) => {
-    const monthlyResults = calculateInputs();
-    const annualResults = getAnnualResults(monthlyResults);
+    const { calculationResults: monthlyResults, age } = calculateInputs();
+    const annualResults = getAnnualResults(monthlyResults, age);
 
     displayMonthlyResultsTable(monthlyResults);
     displayAnnualResultsTable(annualResults);
@@ -1029,14 +1010,16 @@ Object.values(calcInputs).forEach(({
     $annuityTerm,
     $interestRate,
     $monthlyIncome,
-    $annualDrawdown
+    $annualDrawdown,
+    $age
 }) => {
     [
         $startingPrincipal,
         $annuityTerm,
         $interestRate,
         $monthlyIncome,
-        $annualDrawdown
+        $annualDrawdown,
+        $age
     ].forEach(input => input?.addEventListener('input', forceNumeric));
 });
 
@@ -1068,11 +1051,6 @@ import("./lib/chartjs/chart.js").then(({ Chart, registerables }) => {
                 },
                 x: {
                     stacked: true,
-                    ticks: {
-                        callback: function (value, index, ticks) {
-                            return value + 1;
-                        }
-                    },
                     grid: {
                         display: false
                     },

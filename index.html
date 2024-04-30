@@ -71,26 +71,10 @@
                 </div>
                 <div class="input-wrapper row calc-type related-to-calc-type-0">
                     <label class="input col">
-                        <p class="input__title">Interest Rate</p>
+                        <p class="input__title">Annual Interest Rate</p>
                         <div class="input-field row">
                             <input type="text" class="input-field__input" placeholder id="interest-rate-0" value="8" />
                             <span class="input-field__hint">%</span>
-                        </div>
-                    </label>
-                    <label class="input col">
-                        <p class="input__title">Compound</p>
-                        <div class="dropdown-wrapper">
-                            <div class="input-field row " tabindex="0">
-                                <select class="input-field__text" id="compound-0">
-                                    <option value="Monthly (APR)"> Monthly (APR) </option>
-                                    <option value="Semi-Annually"> Semi-Annually </option>
-                                    <option value="Quarterly"> Quarterly </option>
-                                    <option value="Semi-Monthly"> Semi-Monthly </option>
-                                    <option value="Biweekly"> Biweekly </option>
-                                    <option value="Weekly"> Weekly </option>
-                                    <option value="Daily"> Daily </option>
-                                </select>
-                            </div>
                         </div>
                     </label>
                 </div>
@@ -105,26 +89,10 @@
                 </div>
                 <div class="input-wrapper row calc-type related-to-calc-type-1 related-item-hidden">
                     <label class="input col">
-                        <p class="input__title">Interest Rate</p>
+                        <p class="input__title">Annual Interest Rate</p>
                         <div class="input-field row">
                             <input type="text" class="input-field__input" placeholder id="interest-rate-1" value="8" />
                             <span class="input-field__hint">%</span>
-                        </div>
-                    </label>
-                    <label class="input col">
-                        <p class="input__title">Compound</p>
-                        <div class="dropdown-wrapper">
-                            <div class="input-field row " tabindex="0">
-                                <select class="input-field__text" id="compound-1">
-                                    <option value="Monthly (APR)"> Monthly (APR) </option>
-                                    <option value="Semi-Annually"> Semi-Annually </option>
-                                    <option value="Quarterly"> Quarterly </option>
-                                    <option value="Semi-Monthly"> Semi-Monthly </option>
-                                    <option value="Biweekly"> Biweekly </option>
-                                    <option value="Weekly"> Weekly </option>
-                                    <option value="Daily"> Daily </option>
-                                </select>
-                            </div>
                         </div>
                     </label>
                 </div>
@@ -134,6 +102,15 @@
                         <div class="input-field row">
                             <input type="text" class="input-field__input" placeholder id="annual-drawdown-1" value="5" />
                             <span class="input-field__hint">%</span>
+                        </div>
+                    </label>
+                </div>
+                <div class="input-wrapper row calc-type related-to-calc-type-1 related-item-hidden">
+                    <label class="input col">
+                        <p class="input__title">Retirement Age</p>
+                        <div class="input-field row">
+                            <input type="text" class="input-field__input" placeholder id="age-1" value="55" />
+                            <span class="input-field__hint">Years</span>
                         </div>
                     </label>
                 </div>
@@ -216,12 +193,11 @@
                     <table class="result-table">
                         <thead>
                             <tr>
-                                <th class="white text-center">№</th>
+                                <th class="white text-center">AGE</th>
                                 <th class="white">BEGINNING BALANCE</th>
                                 <th class="white">INTEREST</th>
                                 <th class="white">WITHDRAWALS</th>
                                 <th class="white">ENDING BALANCE</th>
-                                <th class="white">DRAWDOWN</th>
                             </tr>
                         </thead>
                         <tbody id="annual-results">
