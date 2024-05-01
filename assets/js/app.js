@@ -883,12 +883,14 @@ const input = {
 const displayAnnualResultsTable = (annualResults) => {
     let annualResultsHtml = '';
     annualResults.forEach((r) => {
+        const drawdown = r.withdrawal / r.startBalance * 100;
         annualResultsHtml += `<tr>
             <td class="text-center">${r.currentAge}</td>
             <td>${currencyFormat(r.startBalance)}</td>
             <td>${currencyFormat(r.interestPayment)}</td>
             <td>${currencyFormat(r.withdrawal)}</td>
             <td>${currencyFormat(r.endBalance)}</td>
+            <td>${drawdown.toFixed(1)}%</td>
         </tr>`;
     });
 
