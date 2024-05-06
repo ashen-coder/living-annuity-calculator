@@ -15,14 +15,6 @@ This is a free living annuity calculator.
 
 * Add the shortcode `[ac_living_annuity_calculator]` to your page, post or sidebar
 
-## Calculation Types
-
-Add `?type=<value>` to the url to set the calculation type of the calculator
-|value| calculation type|
-|-|-|
-| monthly-income | How much will my monthly income be? |
-| annuity-term | How long will my annuity payments last? |
-
 ## Libraries in Use
 
 1. [Chart.js](https://www.chartjs.org/)

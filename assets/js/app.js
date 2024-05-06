@@ -5,16 +5,7 @@ console.log('Script is OK! ༼ つ ◕_◕ ༽つ');
 
 // Types
 /** @typedef {import('./lib/chartjs/chart.js').Chart} Chart */
-/** @typedef {Record<string, ?HTMLElement | undefined>} ElementList */
 /** @typedef {Record<string, number>[]} ResultList */
-/**
- * @callback CalcFunc
- * @param {?number} principal
- * @param {?number} annuityTerm
- * @param {?number} interestRate
- * @param {?number} annualDrawdown
- * @returns {{ calculationResults: ResultList, outputResults: Record<string, string>}}
- */
 
 
 const MIN_DRAWDOWN_PERCENTAGE = 2.5;
@@ -30,22 +21,8 @@ const CALCULATION_LIMIT_YEARS = 1000;
 const CALCULATION_TOO_LONG_ERROR_MESSAGE = `This living annuity will last longer than ${CALCULATION_LIMIT_YEARS} years. Please increase the annual drawdown`;
 const INVALID_DRAWDOWN_ERROR_MESSAGE = `The annual drawdown must be between ${MIN_DRAWDOWN_PERCENTAGE}% and ${MAX_DRAWDOWN_PERCENTAGE}%`;
 const INVALID_AGE_ERROR_MESSAGE = `The minimum retirement age is ${MIN_RETIREMENT_AGE} for a living annuity`;
+const INVALID_PRINCIPAL_ERROR_MESSAGE = `The starting principal must be greater than ${currencyFormat(MIN_BALANCE)}`;
 
-
-/** @param {Event} event */
-function toggleRelatedInputs(event) {
-    const element = /** @type {HTMLSelectElement} */ (event.target);
-    const id = element.id;
-    const index = element.selectedIndex;
-
-    document.querySelectorAll('.' + id)?.forEach(element => {
-        element.classList.add("related-item-hidden");
-    });
-
-    document.querySelectorAll(`.related-to-${id}-${index}`)?.forEach(element => {
-        element.classList.remove("related-item-hidden");
-    });
-}
 
 /** @param {Event} event */
 function forceNumeric(event) {
@@ -58,41 +35,11 @@ function forceNumeric(event) {
 
 /**
  * @param {number} num
- * @param {number} decimals
- * @returns {number}
- */
-function roundDown(num, decimals = 0) {
-    const exp = Math.pow(10, decimals);
-    return Math.floor(num * exp) / exp;
-}
-
-/**
- * @param {number} num
- * @param {number} decimals
- * @returns {number}
- */
-function roundUp(num, decimals = 0) {
-    const exp = Math.pow(10, decimals);
-    return Math.ceil(num * exp) / exp;
-}
-
-/**
- * @param {number} num
  * @param {string} space
  * @returns {string}
  */
 function currencyFormat(num, space = '&nbsp') {
     return `R${space}` + num.toFixed(2).replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1,')
-}
-
-/**
- * @param {number} monthlyIncome 
- * @param {number} startBalance 
- * @returns {number}
- */
-function getCappedMonthlyIncome(monthlyIncome, startBalance) {
-    const dd = startBalance / 12 / 100;
-    return Math.max(Math.min(monthlyIncome, MAX_DRAWDOWN_PERCENTAGE * dd), MIN_DRAWDOWN_PERCENTAGE * dd);
 }
 
 /**
@@ -161,54 +108,17 @@ function getAnnualResults(monthlyResults, age) {
 
 /**
  * @param {number} principal
- * @param {number} annuityTerm
- * @param {number} interestRate
- * @param {number} compound
- * @param {number} initialMonthlyIncome
- * @param {number} annualIncrease
- */
-function calculateResultFast(
-    principal,
-    annuityTerm,
-    interestRate,
-    compound,
-    initialMonthlyIncome,
-    annualIncrease,
-) {
-    const ratePayB = getInterestPayRate(interestRate);
-
-    let balance = principal;
-    let monthlyIncome = getCappedMonthlyIncome(initialMonthlyIncome, principal);
-
-    for (let i = 0; i < annuityTerm * 12; i++) {
-        if (i > 0 && i % 12 === 0) {
-            const nextMonthlyIncome = monthlyIncome * (1 + annualIncrease / 100);
-            monthlyIncome = getCappedMonthlyIncome(nextMonthlyIncome, balance);
-        }
-
-        const interestPayment = balance * ratePayB;
-        balance += interestPayment;
-
-        const withdrawal = Math.min(balance, monthlyIncome)
-        balance -= withdrawal;
-    }
-
-    return { finalBalance: balance };
-}
-
-/**
- * @param {number} principal
  * @param {number} interestRate
  * @param {number} annualDrawdown
  */
-function calculateResult(
+function calculateLivingAnnuity(
     principal,
     interestRate,
     annualDrawdown
 ) {
     const ratePayB = getInterestPayRate(interestRate);
 
-    const results = [];
+    const monthlyResults = [];
     let balance = principal;
     let monthlyIncome = getMonthlyIncome(annualDrawdown, principal);
 
@@ -226,7 +136,7 @@ function calculateResult(
         const withdrawal = Math.min(balance, monthlyIncome)
         balance -= withdrawal;
 
-        results.push({
+        monthlyResults.push({
             startBalance,
             endBalance: balance,
             interestPayment,
@@ -234,187 +144,7 @@ function calculateResult(
         });
     }
 
-    return { results };
-}
-
-const DELTA = 0.0000000001;
-const RETRY_COUNT = 10;
-const DELTA_COUNT = 18;
-
-/**
- * @param {(v: number) => number} resultGetter 
- * @param {number} initialIncrement 
- * @param {number} [initialValue]
- * @returns {number}
- */
-function findParameter(
-    resultGetter,
-    initialIncrement,
-    initialValue = 0.1,
-) {
-    let delta = DELTA;
-    for (let d = 0; d < DELTA_COUNT; d++) {
-        let dm = 1 - delta;
-        let dp = 1;
-        for (let r = 0; r <= RETRY_COUNT; r++) {
-            let value = initialValue;
-            let increment = initialIncrement * Math.pow(2, r);
-            for (let i = 0; i < 1000; i++) {
-                const ratio = resultGetter(value);
-                if (ratio < dm) {
-                    value -= increment;
-                    increment = increment / 2;
-                } else if (ratio >= dm && ratio <= dp) {
-                    if (value < 0) {
-                        input.error([], CALCULATION_FAILED_ERROR_MESSAGE, true);
-                        throw new Error("Calculation failed");
-                    }
-                    return value;
-                } else {
-                    value += increment;
-                }
-            }
-        }
-        delta *= 10;
-    }
-
-    input.error([], CALCULATION_FAILED_ERROR_MESSAGE, true);
-    throw new Error("Calculation Failed");
-}
-
-/**
- * @param {(v: number) => number} resultGetter 
- * @param {number} initialIncrement 
- * @param {number} initialValue 
- * @returns {number}
- */
-function findMoneyParameter(
-    resultGetter,
-    initialIncrement,
-    initialValue = 0.1,
-) {
-    const value = findParameter(resultGetter, initialIncrement, initialValue);
-    const moneyValue = roundUp(value, 2);
-
-    return moneyValue;
-}
-
-/** @type {CalcFunc} */
-function calculateMonthlyIncome(
-    principal,
-    annuityTerm,
-    interestRate,
-    _annualDrawdown
-) {
-    if (
-        principal === null ||
-        annuityTerm === null ||
-        interestRate === null
-    ) {
-        input.error([], CRITICAL_ERROR_MESSAGE, true);
-        throw new Error("Invalid state");
-    }
-
-    // const ratePayB = getInterestPayRate(interestRate, COMPOUND_FREQUENCY);
-    // const firstInterestPayment = principal * ratePayB;
-
-    // const income = findMoneyParameter((i) => {
-    //     const { finalBalance } = calculateResultFast(
-    //         principal,
-    //         annuityTerm,
-    //         interestRate,
-    //         compound,
-    //         i,
-    //         annualIncrease,
-    //     );
-    //     return finalBalance / MIN_BALANCE;
-    // }, 100, firstInterestPayment);
-
-    // console.warn("after")
-    // const { results } = calculateResult(
-    //     principal,
-    //     annuityTerm,
-    //     interestRate,
-    //     compound,
-    //     income,
-    //     annualIncrease,
-    // );
-
-    // const totalWithdrawn = results.map(it => it.withdrawal).reduce((a, b) => a + b);
-    // const totalInterest = results.map(it => it.interestPayment).reduce((a, b) => a + b);
-    // const initialAnnualIncome = income * Math.min(12, results.length);
-    // const drawDown = initialAnnualIncome / Math.max(principal, initialAnnualIncome) * 100;
-
-    // return {
-    //     calculationResults: results,
-    //     outputResults: {
-    //         main: `Monthly Income: ${currencyFormat(income)} <br /> Increasing at ${annualIncrease}% per annum`,
-    //         smallA: `Initial Annual Income: ${currencyFormat(initialAnnualIncome)} <br /> Draw Down Percentage: ${drawDown.toFixed(1)}%`,
-    //         smallB: `Total Withdrawn: ${currencyFormat(totalWithdrawn)}`,
-    //         smallC: `Total Interest: ${currencyFormat(totalInterest)}`,
-    //     }
-    // }
-}
-
-/** @type {CalcFunc} */
-function calculateAnnuityTerm(
-    principal,
-    annuityTerm,
-    interestRate,
-    annualDrawdown
-) {
-    if (
-        principal === null ||
-        interestRate === null ||
-        annualDrawdown === null
-    ) {
-        input.error([], CRITICAL_ERROR_MESSAGE, true);
-        throw new Error("Invalid state");
-    }
-
-    if (principal <= MIN_BALANCE) {
-        input.error(['starting-principal-1'], `The starting principal must be greater than ${currencyFormat(MIN_BALANCE)}`, true);
-        throw new Error("Invalid State");
-    }
-
-    if (annualDrawdown < MIN_DRAWDOWN_PERCENTAGE || annualDrawdown > MAX_DRAWDOWN_PERCENTAGE) {
-        input.error('annual-drawdown-1', INVALID_DRAWDOWN_ERROR_MESSAGE, true);
-        throw new Error("Invalid State");
-    }
-
-    const { results } = calculateResult(
-        principal,
-        interestRate,
-        annualDrawdown
-    );
-
-    const totalWithdrawn = results.map(it => it.withdrawal).reduce((a, b) => a + b);
-    const totalInterest = results.map(it => it.interestPayment).reduce((a, b) => a + b);
-    const actualAnnuityTerm = results.length / 12;
-
-    return {
-        calculationResults: results,
-        outputResults: {
-            main: `Annuity Term: ${actualAnnuityTerm.toFixed(0)}${actualAnnuityTerm >= MAX_ANNUITY_TERM ? '+' : ''} years`,
-            smallA: `Initial Monthly Income: ${currencyFormat(getMonthlyIncome(annualDrawdown, principal))}`,
-            smallB: `Total Withdrawn: ${currencyFormat(totalWithdrawn)}`,
-            smallC: `Total Interest: ${currencyFormat(totalInterest)}`,
-        }
-    }
-}
-
-/** 
- * @param {?number} calcTypeIndex 
- * @returns {CalcFunc}
- */
-function getCalcFuncFromIndex(calcTypeIndex) {
-    switch (calcTypeIndex) {
-        case 0: return calculateMonthlyIncome;
-        case 1: return calculateAnnuityTerm;
-        default:
-            input.error([], CRITICAL_ERROR_MESSAGE, true);
-            throw new Error(`Invalid calculation type index: ${calcTypeIndex}`);
-    }
+    return monthlyResults;
 }
 
 const customDataLabels = {
@@ -522,51 +252,111 @@ const secondaryChartData = [
 
 const primaryChartData = {
     labels: [
-        1,
-        2,
-        3,
-        4,
-        5,
-        6,
-        7,
-        8,
-        9,
-        10,
-        11,
-        12,
-        13,
-        14,
-        15,
-        16,
-        17,
-        18,
-        19,
-        20
+        56,
+        57,
+        58,
+        59,
+        60,
+        61,
+        62,
+        63,
+        64,
+        65,
+        66,
+        67,
+        68,
+        69,
+        70,
+        71,
+        72,
+        73,
+        74,
+        75,
+        76,
+        77,
+        78,
+        79,
+        80,
+        81,
+        82,
+        83,
+        84,
+        85,
+        86,
+        87,
+        88,
+        89,
+        90,
+        91,
+        92,
+        93,
+        94,
+        95,
+        96,
+        97,
+        98,
+        99,
+        100,
+        101,
+        102,
+        103,
+        104,
+        105
     ],
     datasets: [
         {
             label: 'Ending Balance',
             data: [
-                1011487.7542384604,
-                1020353.3987845862,
-                1026200.5204456948,
-                1028590.8649605507,
-                1027040.4172628525,
-                1021015.1340611085,
-                1009926.2987599468,
-                993125.4662041559,
-                969898.9619690396,
-                939461.8979311439,
-                900951.6626127115,
-                853420.8412802505,
-                795829.5169697042,
-                727036.899483187,
-                645792.2249283986,
-                550724.863522688,
-                440333.56812806794,
-                312974.7902871707,
-                166849.98435655562,
-                0
+                1031124.8150528162,
+                1063218.3842177037,
+                1096310.8597872325,
+                1130433.3325385042,
+                1165617.8609433016,
+                1201897.5012874212,
+                1239306.3387274342,
+                1277879.5193141077,
+                1317653.28301254,
+                1358664.9977500418,
+                1400953.1945237464,
+                1444557.6036009488,
+                1489519.1918461658,
+                1535880.2012099973,
+                1583684.1884159404,
+                1632976.0658824537,
+                1683802.14391872,
+                1736210.1742337258,
+                1790249.3947995682,
+                1845970.5761111209,
+                1903426.0688855182,
+                1962669.8532462895,
+                2023757.5894383164,
+                2086746.6701213147,
+                2151696.2742909207,
+                2218667.4228780568,
+                2287723.036078843,
+                2358927.9924688623,
+                2432349.189957368,
+                2508055.608638655,
+                2586118.375599709,
+                2666610.83174494,
+                2749608.6007008348,
+                2835189.659865277,
+                2923434.4136682404,
+                3014425.769112699,
+                3108249.213666775,
+                3204992.895580211,
+                3304747.706700734,
+                3407607.36786801,
+                3513668.516965511,
+                3623030.7997129653,
+                3735796.9632846876,
+                3852072.9528417937,
+                3971968.0110689504,
+                4095594.7808091734,
+                4223069.410893134,
+                4354511.665262392,
+                4490045.035489017,
+                4629796.8567974195
             ],
             stack: "1",
             backgroundColor: colors.primary,
@@ -575,26 +365,56 @@ const primaryChartData = {
         {
             label: 'Total Interest',
             data: [
-                80415.15423845973,
-                161654.56878458505,
-                243494.14894569435,
-                325676.57488555036,
-                407907.81268410204,
-                489853.2992534198,
-                571133.7722118733,
-                651320.7133286794,
-                729931.3714497894,
-                806423.3278859312,
-                880188.564065239,
-                950546.9878054045,
-                1016739.3708211153,
-                1077919.646027169,
-                1133146.5087995797,
-                1181374.261587429,
-                1221442.836096046,
-                1252066.9216535483,
-                1271824.1222912525,
-                1279142.0584744068
+                81124.81505281568,
+                164774.6249703442,
+                251028.01975075895,
+                339966.0354913914,
+                431672.2305231155,
+                526232.7639143994,
+                623736.4764187828,
+                724274.9739418279,
+                827942.7136059657,
+                934837.0924940936,
+                1045058.5391553,
+                1158710.60795869,
+                1275900.0763839558,
+                1396737.0453400952,
+                1521335.0426065377,
+                1649811.1294938494,
+                1782286.0108242382,
+                1918884.148335179,
+                2059733.877612707,
+                2204967.5286642374,
+                2354721.5502441917,
+                2509136.6380492374,
+                2668357.866903579,
+                2832534.8270584936,
+                3001821.7647341643,
+                3176377.7270358475,
+                3356366.711380537,
+                3541957.819574499,
+                3733325.4166864455,
+                3930649.294865603,
+                4134114.8422585907,
+                4343913.217183805,
+                4560241.527726947,
+                4783303.016926434,
+                5013307.25372266,
+                5250470.329850532,
+                5495015.062860242,
+                5747171.205457019,
+                6007175.661356551,
+                6275272.707858865,
+                6551714.22534977,
+                6836759.9339454975,
+                7130677.637502865,
+                7433743.475224206,
+                7746242.181093451,
+                8068467.35138712,
+                8400721.720511543,
+                8743317.445425449,
+                9096576.39891519,
+                9460830.471998053
             ],
             stack: "2",
             backgroundColor: colors.primaryLight,
@@ -603,26 +423,56 @@ const primaryChartData = {
         {
             label: 'Total Withdrawn',
             data: [
-                68927.39999999998,
-                141301.17000000004,
-                217293.6285,
-                297085.709925,
-                380867.3954212497,
-                468838.1651923122,
-                561207.4734519279,
-                658195.2471245249,
-                760032.4094807511,
-                866961.4299547888,
-                979236.9014525289,
-                1097126.1465251553,
-                1220909.8538514138,
-                1350882.7465439835,
-                1487354.2838711827,
-                1630649.3980647423,
-                1781109.267967979,
-                1939092.131366379,
-                2104974.1379346983,
-                2279142.058474407
+                49999.99999999999,
+                101556.24075264078,
+                154717.15996352598,
+                209532.70295288775,
+                266054.36957981286,
+                324335.26262697775,
+                384430.1376913487,
+                446395.4546277205,
+                510289.4305934262,
+                576172.0947440527,
+                644105.3446315546,
+                714153.0043577421,
+                786380.8845377895,
+                860856.8441300974,
+                937650.8541905968,
+                1016835.0636113938,
+                1098483.8669055174,
+                1182673.9741014526,
+                1269484.482813138,
+                1358996.9525531153,
+                1451295.481358672,
+                1546466.7848029467,
+                1644600.277465262,
+                1745788.1569371787,
+                1850125.4904432432,
+                1957710.3041577903,
+                2068643.6753016938,
+                2183029.8271056362,
+                2300976.226729077,
+                2422593.6862269477,
+                2547996.4666588814,
+                2677302.3854388655,
+                2810632.927026114,
+                2948113.3570611575,
+                3089872.8400544194,
+                3236044.560737834,
+                3386765.8491934673,
+                3542178.3098768075,
+                3702427.9546558172,
+                3867665.3399908547,
+                4038045.7083842573,
+                4213729.134232531,
+                4394880.674218184,
+                4581670.522382419,
+                4774274.170024506,
+                4972872.570577952,
+                5177652.309618416,
+                5388805.780163067,
+                5606531.3634261815,
+                5831033.615200638
             ],
             stack: "3",
             backgroundColor: colors.secondary,
@@ -631,56 +481,23 @@ const primaryChartData = {
     ],
 };
 
-const $errorBox = /** @type {HTMLElement} */ (document.getElementById('error-box'));
-const $errorList = /** @type {HTMLElement} */ (document.getElementById('error-list'));
-const $annualResultsTable = /** @type {HTMLElement} */ (document.getElementById('annual-results'));
-const $monthlyResultsTable = /** @type {HTMLElement} */ (document.getElementById('monthly-results'));
+const $errorBox = document.getElementById('error-box');
+const $errorList = document.getElementById('error-list');
+const $annualResultsTable = document.getElementById('annual-results');
+const $monthlyResultsTable = document.getElementById('monthly-results');
 
-const $secondaryChart = /** @type {HTMLCanvasElement} */ (document.getElementById('secondary-chart'));
-const $primaryChart = /** @type {HTMLCanvasElement} */ (document.getElementById('primary-chart'));
-const $calculationType = /** @type {HTMLSelectElement} */ (document.getElementById('calc-type'));
-const $calculateBtn = /** @type {HTMLButtonElement} */ (document.getElementById('calculate-btn'));
+const $primaryChart = document.getElementById('primary-chart');
+const $calculateBtn = document.getElementById('calculate-btn');
 
-const calcInputs = /** @type {Record<number, ElementList>} */ ({
-    0: {
-        $startingPrincipal: document.getElementById('starting-principal-0'),
-        $annuityTerm: document.getElementById('annuity-term-0'),
-        $interestRate: document.getElementById('interest-rate-0')
-    },
-    1: {
-        $startingPrincipal: document.getElementById('starting-principal-1'),
-        $interestRate: document.getElementById('interest-rate-1'),
-        $annualDrawdown: document.getElementById('annual-drawdown-1'),
-        $age: document.getElementById('age-1'),
-    },
-});
+const $startingPrincipal = document.getElementById('starting-principal');
+const $interestRate = document.getElementById('interest-rate');
+const $annualDrawdown = document.getElementById('annual-drawdown');
+const $age = document.getElementById('age');
 
-const calcOutputs = /** @type {Record<number, ElementList>} */ ({
-    0: {
-        $main: document.getElementById('result-main-0'),
-        $smallA: document.getElementById('result-small-A-0'),
-        $smallB: document.getElementById('result-small-B-0'),
-        $smallC: document.getElementById('result-small-C-0'),
-    },
-    1: {
-        $main: document.getElementById('result-main-1'),
-        $smallA: document.getElementById('result-small-A-1'),
-        $smallB: document.getElementById('result-small-B-1'),
-        $smallC: document.getElementById('result-small-C-1'),
-    },
-    2: {
-        $main: document.getElementById('result-main-2'),
-        $smallA: document.getElementById('result-small-A-2'),
-        $smallB: document.getElementById('result-small-B-2'),
-        $smallC: document.getElementById('result-small-C-2'),
-    },
-    3: {
-        $main: document.getElementById('result-main-3'),
-        $smallA: document.getElementById('result-small-A-3'),
-        $smallB: document.getElementById('result-small-B-3'),
-        $smallC: document.getElementById('result-small-C-3'),
-    },
-})
+const $main = document.getElementById('result-main');
+const $smallA = document.getElementById('result-small-A');
+const $smallB = document.getElementById('result-small-B');
+const $smallC = document.getElementById('result-small-C');
 
 const input = {
     value: /** @type {*} */ (null),
@@ -690,7 +507,7 @@ const input = {
     silent: false,
     reset: function () {
         this.shown = false;
-        $errorBox.classList.remove('calculator-result--error-active');
+        $errorBox?.classList.remove('calculator-result--error-active');
         document.querySelectorAll('.input-field--error')?.forEach(el => el.classList.remove('input-field--error'))
         document.querySelectorAll('.calculator-result:not(.calculator-result--error)').forEach(el => el.classList.remove('calculator-result--hidden'))
     },
@@ -705,14 +522,14 @@ const input = {
         if (!this.shown) {
             this.processed = false;
             this.shown = true;
-            $errorList.innerHTML = '';
-            $errorBox.classList.add('calculator-result--error-active');
+            $errorList && ($errorList.innerHTML = '');
+            $errorBox?.classList.add('calculator-result--error-active');
             document.querySelectorAll('.calculator-result:not(.calculator-result--error)').forEach(el => el.classList.add('calculator-result--hidden'))
         }
         const element = document.createElement('p');
         element.classList.add('calculator-error__item');
         element.innerHTML = message;
-        $errorList.append(element);
+        $errorList?.append(element);
         if (last) this.processed = true;
     },
     valid: function () {
@@ -879,6 +696,24 @@ const input = {
     }
 }
 
+/** @param {ResultList} monthlyResults */
+const displayCalculationResults = (monthlyResults) => {
+    const totalWithdrawn = monthlyResults.map(it => it.withdrawal).reduce((a, b) => a + b);
+    const totalInterest = monthlyResults.map(it => it.interestPayment).reduce((a, b) => a + b);
+    const actualAnnuityTerm = monthlyResults.length / 12;
+    const initialMonthlyIncome = monthlyResults[0]?.withdrawal;
+
+    const main = `Annuity Term: ${actualAnnuityTerm.toFixed(0)}${actualAnnuityTerm >= MAX_ANNUITY_TERM ? '+' : ''} years`;
+    const smallA = `Initial Monthly Income: ${currencyFormat(initialMonthlyIncome)}`;
+    const smallB = `Total Withdrawn: ${currencyFormat(totalWithdrawn)}`;
+    const smallC = `Total Interest: ${currencyFormat(totalInterest)}`;
+
+    $main && ($main.innerHTML = main);
+    $smallA && ($smallA.innerHTML = smallA);
+    $smallB && ($smallB.innerHTML = smallB);
+    $smallC && ($smallC.innerHTML = smallC);
+}
+
 /** @param {ResultList} annualResults */
 const displayAnnualResultsTable = (annualResults) => {
     let annualResultsHtml = '';
@@ -894,7 +729,7 @@ const displayAnnualResultsTable = (annualResults) => {
         </tr>`;
     });
 
-    $annualResultsTable.innerHTML = annualResultsHtml;
+    $annualResultsTable && ($annualResultsTable.innerHTML = annualResultsHtml);
 }
 
 /** @param {ResultList} monthlyResults */
@@ -916,7 +751,7 @@ const displayMonthlyResultsTable = (monthlyResults) => {
         }
     });
 
-    $monthlyResultsTable.innerHTML = monthlyResultsHtml;
+    $monthlyResultsTable && ($monthlyResultsTable.innerHTML = monthlyResultsHtml);
 }
 
 /**
@@ -924,7 +759,7 @@ const displayMonthlyResultsTable = (monthlyResults) => {
  * @param {Chart} primaryChart
  */
 const displayPrimaryResultsChart = (annualResults, primaryChart) => {
-    primaryChart.data.labels = annualResults.map(it => it.currentAge.toString());
+    primaryChart.data.labels = annualResults.map(it => it.currentAge);
     primaryChart.data.datasets[0].data = annualResults.map(it => it.endBalance);
     primaryChart.data.datasets[1].data = annualResults.map(it => it.totalInterest);
     primaryChart.data.datasets[2].data = annualResults.map(it => it.totalWithdrawn);
@@ -933,97 +768,72 @@ const displayPrimaryResultsChart = (annualResults, primaryChart) => {
     primaryChart.update();
 }
 
-const calculateInputs = () => {
-    const calcTypeIndex = $calculationType.selectedIndex;
-    const calcFunc = getCalcFuncFromIndex(calcTypeIndex);
-    const {
-        $startingPrincipal,
-        $annuityTerm,
-        $interestRate,
-        $annualDrawdown,
-        $age
-    } = calcInputs[calcTypeIndex];
-
+const getInputs = () => {
     input.reset();
-    const principal = input.get($startingPrincipal?.id).val();
-    const annuityTerm = input.get($annuityTerm?.id).val();
-    const interestRate = input.get($interestRate?.id).val();
-    const annualDrawdown = input.get($annualDrawdown?.id).val();
-    const age = input.get($age?.id).val();
+
+    const principal = input.get($startingPrincipal?.id)
+        .number(CRITICAL_ERROR_MESSAGE)
+        .gte(MIN_BALANCE, INVALID_PRINCIPAL_ERROR_MESSAGE)
+        .val();
+    const interestRate = input.get($interestRate?.id)
+        .number(CRITICAL_ERROR_MESSAGE)
+        .percentage('The annual interest rate must be between 0% and 100%')
+        .val();
+    const annualDrawdown = input.get($annualDrawdown?.id)
+        .number()
+        .gte(MIN_DRAWDOWN_PERCENTAGE, INVALID_DRAWDOWN_ERROR_MESSAGE)
+        .lte(MAX_DRAWDOWN_PERCENTAGE, INVALID_DRAWDOWN_ERROR_MESSAGE)
+        .val();
+    const age = input.get($age?.id)
+        .number()
+        .gte(MIN_RETIREMENT_AGE, INVALID_AGE_ERROR_MESSAGE)
+        .val();
 
     if (!input.valid()) throw new Error("Invalid State");
 
-    if (age === null) {
+    if (
+        principal === null ||
+        interestRate === null ||
+        annualDrawdown === null ||
+        age === null
+    ) {
         input.error([], CRITICAL_ERROR_MESSAGE, true);
         throw new Error("Invalid state");
     }
 
-    if (age < MIN_RETIREMENT_AGE) {
-        input.error('age-1', INVALID_AGE_ERROR_MESSAGE, true);
-        throw new Error("Invalid State");
-    }
-
-    const {
-        outputResults: {
-            main,
-            smallA,
-            smallB,
-            smallC
-        },
-        calculationResults
-    } = calcFunc(
-        principal,
-        annuityTerm,
-        interestRate,
-        annualDrawdown
-    );
-
-    const {
-        $main,
-        $smallA,
-        $smallB,
-        $smallC
-    } = calcOutputs[calcTypeIndex];
-
-    $main && ($main.innerHTML = main);
-    $smallA && ($smallA.innerHTML = smallA);
-    $smallB && ($smallB.innerHTML = smallB);
-    $smallC && ($smallC.innerHTML = smallC)
-
-    return { calculationResults, age };
+    return { principal, interestRate, annualDrawdown, age };
 }
 
 /**
  * @param {Chart} primaryChart
  */
 const runApp = (primaryChart) => {
-    const { calculationResults: monthlyResults, age } = calculateInputs();
+    const {
+        principal,
+        interestRate,
+        annualDrawdown,
+        age
+    } = getInputs();
+
+    const monthlyResults = calculateLivingAnnuity(
+        principal,
+        interestRate,
+        annualDrawdown
+    );
     const annualResults = getAnnualResults(monthlyResults, age);
 
+    displayCalculationResults(monthlyResults);
     displayMonthlyResultsTable(monthlyResults);
     displayAnnualResultsTable(annualResults);
     displayPrimaryResultsChart(annualResults, primaryChart);
 }
 
-$calculationType.addEventListener('change', toggleRelatedInputs);
-
-Object.values(calcInputs).forEach(({
+[
     $startingPrincipal,
-    $annuityTerm,
     $interestRate,
-    $monthlyIncome,
     $annualDrawdown,
     $age
-}) => {
-    [
-        $startingPrincipal,
-        $annuityTerm,
-        $interestRate,
-        $monthlyIncome,
-        $annualDrawdown,
-        $age
-    ].forEach(input => input?.addEventListener('input', forceNumeric));
-});
+].forEach(input => input?.addEventListener('input', forceNumeric));
 
 import("./lib/chartjs/chart.js").then(({ Chart, registerables }) => {
     Chart.register(...registerables);
@@ -1061,13 +871,5 @@ import("./lib/chartjs/chart.js").then(({ Chart, registerables }) => {
         }
     });
 
-    $calculationType.addEventListener('change', () => runApp(primaryChart));
-    $calculateBtn.addEventListener('click', () => runApp(primaryChart));
-
-    const queryString = window.location.search;
-    const urlParams = new URLSearchParams(queryString);
-    if (urlParams.has('type')) {
-        const event = new Event('change');
-        $calculationType.dispatchEvent(event);
-    }
+    $calculateBtn?.addEventListener('click', () => runApp(primaryChart));
 })
