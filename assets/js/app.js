@@ -485,9 +485,11 @@ const $errorBox = document.getElementById('error-box');
 const $errorList = document.getElementById('error-list');
 const $annualResultsTable = document.getElementById('annual-results');
 const $monthlyResultsTable = document.getElementById('monthly-results');
+const $monthlyFigures = document.getElementById('monthly-figures');
 
 const $primaryChart = document.getElementById('primary-chart');
 const $calculateBtn = document.getElementById('calculate-btn');
+const $showMonthlyFigures = /** @type {HTMLInputElement} */ (document.getElementById('show-monthly-figures'));
 
 const $startingPrincipal = document.getElementById('starting-principal');
 const $interestRate = document.getElementById('interest-rate');
@@ -834,6 +836,14 @@ const runApp = (primaryChart) => {
     $annualDrawdown,
     $age
 ].forEach(input => input?.addEventListener('input', forceNumeric));
+
+$showMonthlyFigures?.addEventListener('change', () => {
+    if ($showMonthlyFigures.checked) {
+        $monthlyFigures?.classList.remove('hidden');
+    } else {
+        $monthlyFigures?.classList.add('hidden');
+    }
+});
 
 import("./lib/chartjs/chart.js").then(({ Chart, registerables }) => {
     Chart.register(...registerables);
