@@ -7,6 +7,8 @@ console.log('Script is OK! ༼ つ ◕_◕ ༽つ');
 /** @typedef {import('./lib/chartjs/chart.js').Chart} Chart */
 /** @typedef {Record<string, number>[]} ResultList */
 
+let currencySymbol = 'R';
+let showCurrencyDecimals = true;
 
 const MIN_DRAWDOWN_PERCENTAGE = 2.5;
 const MAX_DRAWDOWN_PERCENTAGE = 17.5;
@@ -21,8 +23,7 @@ const CALCULATION_LIMIT_YEARS = 1000;
 const CALCULATION_TOO_LONG_ERROR_MESSAGE = `This living annuity will last longer than ${CALCULATION_LIMIT_YEARS} years. Please increase the annual drawdown`;
 const INVALID_DRAWDOWN_ERROR_MESSAGE = `The annual drawdown must be between ${MIN_DRAWDOWN_PERCENTAGE}% and ${MAX_DRAWDOWN_PERCENTAGE}%`;
 const INVALID_AGE_ERROR_MESSAGE = `The minimum retirement age is ${MIN_RETIREMENT_AGE} for a living annuity`;
-const INVALID_PRINCIPAL_ERROR_MESSAGE = `The starting principal must be greater than ${currencyFormat(MIN_BALANCE)}`;
-
+const INVALID_PRINCIPAL_ERROR_MESSAGE = () => `The starting principal must be greater than ${currencyFormat(MIN_BALANCE)}`;
 
 /** @param {Event} event */
 function forceNumeric(event) {
@@ -33,13 +34,42 @@ function forceNumeric(event) {
         .replace(/(\..*?)\..*/g, '$1');
 }
 
+/** @param {string} value */
+function getCurrencySymbol(value) {
+    switch (value) {
+        case 'USD':
+            return '$';
+        case 'EUR':
+            return '€';
+        case 'GBP':
+            return '£';
+        case 'JPY':
+            return '¥';
+        case 'CHF':
+            return 'CHF';
+        case 'CAD':
+            return 'C$';
+        case 'AUD':
+            return 'A$';
+        case 'CNY':
+            return '¥';
+        case 'INR':
+            return '₹';
+        case 'AED':
+            return 'AED';
+        case 'ZAR':
+        default:
+            return 'R';
+    }
+}
+
 /**
  * @param {number} num
  * @param {string} space
  * @returns {string}
  */
 function currencyFormat(num, space = '&nbsp') {
-    return `R${space}` + num.toFixed(2).replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1,')
+    return `${currencySymbol}${space}` + num.toFixed(showCurrencyDecimals ? 2 : 0).replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1,')
 }
 
 /**
@@ -501,6 +531,8 @@ const $smallA = document.getElementById('result-small-A');
 const $smallB = document.getElementById('result-small-B');
 const $smallC = document.getElementById('result-small-C');
 
+const $currency = /** @type {HTMLSelectElement} */ (document.getElementById('currency'));
+
 const input = {
     value: /** @type {*} */ (null),
     elementId: "",
@@ -775,7 +807,7 @@ const getInputs = () => {
 
     const principal = input.get($startingPrincipal?.id)
         .number(CRITICAL_ERROR_MESSAGE)
-        .gte(MIN_BALANCE, INVALID_PRINCIPAL_ERROR_MESSAGE)
+        .gte(MIN_BALANCE, INVALID_PRINCIPAL_ERROR_MESSAGE())
         .val();
     const interestRate = input.get($interestRate?.id)
         .number(CRITICAL_ERROR_MESSAGE)
@@ -830,6 +862,16 @@ const runApp = (primaryChart) => {
     displayPrimaryResultsChart(annualResults, primaryChart);
 }
 
+/**
+ * @param {Chart} primaryChart
+ */
+const changeCurrency = (primaryChart) => {
+    currencySymbol = getCurrencySymbol($currency.value);
+    showCurrencyDecimals = $currency.value !== 'JPY';
+    document.querySelectorAll('.input-field__currency').forEach(el => el.textContent = currencySymbol);
+    runApp(primaryChart);
+};
+
 [
     $startingPrincipal,
     $interestRate,
@@ -882,4 +924,5 @@ import("./lib/chartjs/chart.js").then(({ Chart, registerables }) => {
     });
 
     $calculateBtn?.addEventListener('click', () => runApp(primaryChart));
+    $currency.addEventListener('change', () => changeCurrency(primaryChart));
 })

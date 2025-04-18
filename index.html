@@ -21,10 +21,32 @@
             <p id="calc-title" class="table-cell table-cell--dark table-cell--only-title">Living Annuity Calculator - How Long Will My Annuity Payments Last?</p>
             <div class="calculator-content col">
                 <div class="input-wrapper row">
+                    <label class="input col ">
+                        <p class="input__title">Currency</p>
+                        <div class="dropdown-wrapper">
+                            <div class="input-field row " tabindex="0">
+                                <select class="input-field__text" id="currency">
+                                    <option value="ZAR"> South African Rand (ZAR) </option>
+                                    <option value="USD"> US Dollar (USD) </option>
+                                    <option value="EUR"> Euro (EUR) </option>
+                                    <option value="GBP"> British Pound (GBP) </option>
+                                    <option value="JPY"> Japanese Yen (JPY) </option>
+                                    <option value="CHF"> Swiss Franc (CHF) </option>
+                                    <option value="CAD"> Canadian Dollar (CAD) </option>
+                                    <option value="AUD"> Australian Dollar (AUD) </option>
+                                    <option value="CNY"> Chinese Yuan Renminbi (CNY) </option>
+                                    <option value="INR"> Indian Rupee (INR) </option>
+                                    <option value="AED"> UAE Dirham (AED) </option>
+                                </select>
+                            </div>
+                        </div>
+                    </label>
+                </div>
+                <div class="input-wrapper row">
                     <label class="input col">
                         <p class="input__title">Starting Principal</p>
                         <div class="input-field row">
-                            <span class="input-field__hint">R</span>
+                            <span class="input-field__hint input-field__currency">R</span>
                             <input type="text" class="input-field__input" placeholder id="starting-principal" value="1000000" />
                         </div>
                     </label>
